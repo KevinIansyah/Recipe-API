@@ -11,36 +11,24 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class RecipeController extends Controller implements HasMiddleware
 {
     public static function middleware()
     {
         return [
-            new Middleware('auth:sanctum', except: ['index'])
+            new Middleware('auth:sanctum', except: ['index', 'show'])
         ];
     }
 
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        $recipes = Recipe::with([
-            'ingredients' => function ($query) {
-                $query->select('id', 'recipe_id', 'order', 'description')->orderBy('order', 'asc');
-            },
-            'steps' => function ($query) {
-                $query->select('id', 'recipe_id', 'order', 'description')->orderBy('order', 'asc');
-            }
-        ])->paginate(10);
+        $recipes = Recipe::with('user:id,name')->orderBy('created_at', 'desc')->paginate(20);
 
         return response()->json($recipes, 200);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $fields = $request->validate([
@@ -48,7 +36,7 @@ class RecipeController extends Controller implements HasMiddleware
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'duration' => 'required|integer|min:1',
-            'portion' => 'required|integer|min:1',
+            'servings' => 'required|integer|min:1',
             'image' => 'required|image|mimes:jpg,jpeg,png|max:2048',
             'media' => 'nullable|url',
             'ingredients' => 'required|array|min:1',
@@ -57,7 +45,14 @@ class RecipeController extends Controller implements HasMiddleware
             'steps.*' => 'required|string',
         ]);
 
-        $fields['image'] = $request->file('image')->store('recipes/images', 'public');
+        if ($request->hasFile('image')) {
+            $timestamp = now()->timestamp;
+            $slugName = Str::slug($fields['name']);
+            $extension = $request->file('image')->getClientOriginalExtension();
+            $fileName = "{$timestamp}-{$slugName}.{$extension}";
+
+            $fields['image'] = $request->file('image')->storeAs('recipes/images', $fileName, 'public');
+        }
         $fields['media'] = $request->input('media', null);
 
         $recipe = Recipe::create($fields);
@@ -81,10 +76,6 @@ class RecipeController extends Controller implements HasMiddleware
         return response()->json($recipe, 201);
     }
 
-
-    /**
-     * Display the specified resource.
-     */
     public function show($id)
     {
         $recipe = Recipe::with([
@@ -93,7 +84,10 @@ class RecipeController extends Controller implements HasMiddleware
             },
             'steps' => function ($query) {
                 $query->select('id', 'recipe_id', 'order', 'description')->orderBy('order', 'asc');
-            }
+            },
+            'user' => function ($query) {
+                $query->select('id', 'name', 'image');
+            },
         ])->where('id', $id)->first();
 
         if (!$recipe) {
@@ -103,16 +97,13 @@ class RecipeController extends Controller implements HasMiddleware
         return response()->json($recipe, 200);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, Recipe $recipe)
     {
         $fields = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'duration' => 'required|integer|min:1',
-            'portion' => 'required|integer|min:1',
+            'servings' => 'required|integer|min:1',
             'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             'media' => 'nullable|url',
             'ingredients' => 'nullable|array|min:1',
@@ -122,7 +113,12 @@ class RecipeController extends Controller implements HasMiddleware
         ]);
 
         if ($request->hasFile('image')) {
-            $fields['image'] = $request->file('image')->store('recipes/images', 'public');
+            $timestamp = now()->timestamp;
+            $slugName = Str::slug($fields['name']);
+            $extension = $request->file('image')->getClientOriginalExtension();
+            $fileName = "{$timestamp}-{$slugName}.{$extension}";
+
+            $fields['image'] = $request->file('image')->storeAs('recipes/images', $fileName, 'public');
 
             if ($recipe->image) {
                 Storage::disk('public')->delete($recipe->image);
@@ -158,9 +154,6 @@ class RecipeController extends Controller implements HasMiddleware
         return response()->json($recipe, 200);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Recipe $recipe)
     {
         if ($recipe->image) {

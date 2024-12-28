@@ -14,10 +14,13 @@ class Recipe extends Model
         'user_id',
         'name',
         'duration',
-        'portion',
+        'servings',
         'description',
         'image',
         'media',
+        'like',
+        'bookmark',
+        'comment',
     ];
 
     public function user()
@@ -33,5 +36,20 @@ class Recipe extends Model
     public function steps()
     {
         return $this->hasMany(Step::class);
+    }
+
+    public function likes()
+    {
+        return $this->hasMany(Like::class);
+    }
+
+    public function bookmark()
+    {
+        return $this->hasMany(Bookmark::class);
+    }
+
+    public function comment()
+    {
+        return $this->hasMany(Comment::class);
     }
 }
